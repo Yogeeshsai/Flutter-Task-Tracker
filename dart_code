@@ -1,0 +1,231 @@
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() {
+  runApp(TaskTrackerApp());
+}
+
+class TaskTrackerApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Flutter Task Tracker',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
+      home: TaskListScreen(),
+    );
+  }
+}
+
+class TaskListScreen extends StatefulWidget {
+  @override
+  _TaskListScreenState createState() => _TaskListScreenState();
+}
+
+class _TaskListScreenState extends State<TaskListScreen> {
+  List<Task> _tasks = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTasks();
+  }
+
+  void _loadTasks() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _tasks = Task.fromPrefs(prefs);
+    });
+  }
+
+  void _saveTasks() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    Task.saveToPrefs(prefs, _tasks);
+  }
+
+  void _addTask(Task task) {
+    setState(() {
+      _tasks.add(task);
+    });
+    _saveTasks();
+  }
+
+  void _deleteTask(Task task) {
+    setState(() {
+      _tasks.remove(task);
+    });
+    _saveTasks();
+  }
+
+  void _toggleTaskCompletion(Task task) {
+    setState(() {
+      task.isCompleted = !task.isCompleted;
+    });
+    _saveTasks();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Task List'),
+      ),
+      body: ListView.builder(
+        itemCount: _tasks.length,
+        itemBuilder: (context, index) {
+          return TaskListItem(
+            task: _tasks[index],
+            onDelete: () => _deleteTask(_tasks[index]),
+            onToggleCompletion: () => _toggleTaskCompletion(_tasks[index]),
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          Task? newTask = await showDialog<Task>(
+            context: context,
+            builder: (BuildContext context) {
+              return NewTaskDialog();
+            },
+          );
+          if (newTask != null) {
+            _addTask(newTask);
+          }
+        },
+        child: Icon(Icons.add),
+      ),
+    );
+  }
+}
+
+class TaskListItem extends StatelessWidget {
+  final Task task;
+  final VoidCallback onDelete;
+  final VoidCallback onToggleCompletion;
+
+  TaskListItem({
+    required this.task,
+    required this.onDelete,
+    required this.onToggleCompletion,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      title: Text(task.title),
+      subtitle: Text(task.description),
+      leading: Checkbox(
+        value: task.isCompleted,
+        onChanged: (value) => onToggleCompletion(),
+      ),
+      trailing: IconButton(
+        icon: Icon(Icons.delete),
+        onPressed: onDelete,
+      ),
+    );
+  }
+}
+
+class NewTaskDialog extends StatefulWidget {
+  @override
+  _NewTaskDialogState createState() => _NewTaskDialogState();
+}
+
+class _NewTaskDialogState extends State<NewTaskDialog> {
+  late TextEditingController _titleController;
+  late TextEditingController _descriptionController;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController();
+    _descriptionController = TextEditingController();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('New Task'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          TextField(
+            controller: _titleController,
+            decoration: InputDecoration(labelText: 'Title'),
+          ),
+          TextField(
+            controller: _descriptionController,
+            decoration: InputDecoration(labelText: 'Description'),
+          ),
+        ],
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () {
+            String title = _titleController.text.trim();
+            String description = _descriptionController.text.trim();
+            if (title.isNotEmpty) {
+              Navigator.of(context).pop(Task(title: title, description: description));
+            }
+          },
+          child: Text('Add'),
+        ),
+      ],
+    );
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+}
+
+class Task {
+  final String title;
+  final String description;
+  bool isCompleted;
+
+  Task({
+    required this.title,
+    required this.description,
+    this.isCompleted = false,
+  });
+
+  static List<Task> fromPrefs(SharedPreferences prefs) {
+    List<String>? tasksJson = prefs.getStringList('tasks');
+    if (tasksJson != null) {
+      return tasksJson.map((json) => Task.fromJson(json)).toList();
+    } else {
+      return [];
+    }
+  }
+
+  static void saveToPrefs(SharedPreferences prefs, List<Task> tasks) {
+    List<String> tasksJson = tasks.map((task) => task.toJson()).toList();
+    prefs.setStringList('tasks', tasksJson);
+  }
+
+  factory Task.fromJson(String json) {
+    Map<String, dynamic> data = jsonDecode(json);
+    return Task(
+      title: data['title'],
+      description: data['description'],
+      isCompleted: data['isCompleted'],
+    );
+  }
+
+  String toJson() {
+    return jsonEncode({
+      'title': title,
+      'description': description,
+      'isCompleted': isCompleted,
+    });
+  }
+}
